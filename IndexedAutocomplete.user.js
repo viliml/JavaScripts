@@ -1543,35 +1543,56 @@ function SubmetatagData() {
     return SubmetatagData.data;
 }
 
+function GlobRegex(search, use_capture, return_groups = false) {
+    GlobRegex.regexes ||= {};
+    GlobRegex.capture_groups ||= {};
+    let key = search + '\xff' + use_capture;
+    if (!(key in GlobRegex.regexes)) {
+        const captureMap = (
+                               use_capture ?
+                               (val) => (val.slice(0, 2) === String.raw`\*` ? '(.*)' : `(${val})`) :
+                               (val) => (val.slice(0, 2) === String.raw`\*` ? '.*' : `${val}`)
+                           );
+        GlobRegex.capture_groups[key] = JSPLib.utility.findAll(search, /\*|[^*]+/g)
+                                           .filter((val) => val !== '')
+                                           .map((val) => JSPLib.utility.regexpEscape(val))
+                                           .map(captureMap);
+        GlobRegex.regexes[key] = new RegExp('^' + GlobRegex.capture_groups[key].join("") + '$');
+        console.log('GlobRegex', search, use_capture, GlobRegex.capture_groups[key], GlobRegex.regexes[key]);
+    }
+    return (return_groups ? GlobRegex.capture_groups[key] : GlobRegex.regexes[key]);
+}
+
+function WordRegex(search, use_capture) {
+    WordRegex.regexes ||= {};
+    if (!(search in WordRegex.regexes)) {
+        let capture_groups = JSPLib.utility.findAll(search, /[_+-]|[^_+-]+/g)
+            .filter((val)=>val !== '')
+            .map((word)=>{
+                if (word.match(/[_+-]/)) {
+                    return (use_capture ? '(.*)' : '.*');
+                }
+                let trim_word = word.replace(/[()[\]]+/g, "");
+                let escape_word = JSPLib.utility.regexpEscape(trim_word);
+                return String.raw`(?<=^|[\(_+-])` + (use_capture ? `(${escape_word})` : escape_word);
+            });
+        WordRegex.regexes[search] = new RegExp(capture_groups.join(""));
+        console.log('WordRegex', search, use_capture, WordRegex.regexes[search]);
+    }
+    return WordRegex.regexes[search];
+}
+
 //Get regex from separate function and memoize that value
 function GetGlobMatches(name, search, use_capture) {
-    const captureMap = (
-                           use_capture ?
-                           (val) => (val[0] === '*' ? '(.*)' : `(${val})`) :
-                           (val) => (val[0] === '*' ? '.*' : `${val}`)
-                       );
-    let capture_groups = JSPLib.utility.findAll(search, /\*|[^*]+/g)
-                                       .filter((val)=>val !== '')
-                                       .map(captureMap);
-    let regex = new RegExp('^' + capture_groups.join("") + '$');
+    let regex = GlobRegex(search, use_capture);
     let match = name.match(regex);
-    console.log('GetGlobMatches', name, search, use_capture, capture_groups, regex, match);
+    console.log('GetGlobMatches', name, search, use_capture, regex, match);
     return match;
 }
 
 //Get regex from separate function and memoize that value
 function GetWordMatches(name, search, use_capture) {
-    let capture_groups = JSPLib.utility.findAll(search, /[_+-]|[^_+-]+/g)
-                            .filter((val)=>val !== '')
-                            .map((word)=>{
-                                if (word.match(/[_+-]/)) {
-                                    return (use_capture ? '(.*)' : '.*');
-                                }
-                                let trim_word = word.replace(/[()[\]]+/g, "");
-                                let escape_word = JSPLib.utility.regexpEscape(trim_word);
-                                return String.raw`(?<=^|[\(_+-])` + (use_capture ? `(${escape_word})` : escape_word);
-                            });
-    let regex = new RegExp(capture_groups.join(""));
+    let regex = WordRegex(search, use_capture);
     let match = name.match(regex);
     console.log('GetWordMatches', name, search, use_capture, capture_groups, regex, match);
     return match;
@@ -1910,26 +1931,38 @@ function KeepSourceData(type, metatag, data) {
     });
 }
 
-function GetChoiceOrder(type, query) {
-    console.log('GetChoiceOrder', type, query);
+function GetChoiceOrder(type, query, word_mode) {
     let queryterm = query.toLowerCase();
+    let search_mode = (type !== 'tag') || (!word_mode && (query.indexOf('*') === (query.length - 1)));
+    let starts_mode = search_mode && SOURCE_CONFIG[type].searchstart;
+    let regex = (search_mode ? null : (word_mode ? WordRegex(query, false) : GlobRegex(query, false)));
+    let search_query = (search_mode && type === 'tag' ? queryterm.slice(0, -1) : queryterm);
+    console.log('GetChoiceOrder', type, query, word_mode, search_mode, regex, search_query);
+    JSPLib.debug.debugTime('choice-order');
     let available_choices = IAC.choice_order[type].filter((name) => {
-        let queryindex = name.toLowerCase().indexOf(queryterm);
-        return (queryindex === 0) || (!SOURCE_CONFIG[type].searchstart && queryindex > 0);
+        let norm_name = name.toLowerCase();
+        if (starts_mode) {
+            return norm_name.startsWith(search_query);
+        } else if (search_mode) {
+            return norm_name.indexOf(search_query) > 0;
+        } else {
+            return norm_name.match(regex);
+        }
     });
+    JSPLib.debug.debugTimeEnd('choice-order');
     let sortable_choices = available_choices.filter((tag) => (IAC.choice_data[type][tag].use_count > 0));
     sortable_choices.sort((a, b) => IAC.choice_data[type][b].use_count - IAC.choice_data[type][a].use_count);
     return JSPLib.utility.arrayUnique(sortable_choices.concat(available_choices));
 }
 
-function AddUserSelected(type, metatag, term, data, query_type) {
+function AddUserSelected(type, metatag, term, data, query_type, word_mode) {
     IAC.shown_data = [];
     let order = IAC.choice_order[type];
     let choice = IAC.choice_data[type];
     if (!order || !choice) {
         return;
     }
-    let user_order = GetChoiceOrder(type, term);
+    let user_order = GetChoiceOrder(type, term, word_mode);
     for (let i = user_order.length - 1; i >= 0; i--) {
         let checkterm = metatag + user_order[i];
         if (query_type === 'tag' && choice[checkterm].category === METATAG_TAG_CATEGORY) {
@@ -1944,7 +1977,10 @@ function AddUserSelected(type, metatag, term, data, query_type) {
                 break;
             }
         }
-        let add_data = choice[user_order[i]];
+        let add_data = Object.assign({}, choice[user_order[i]], {term});
+        if (type === 'tag' && ['tag', 'tag-word'].includes(add_data.source)) {
+            add_data.source = (word_mode ? 'tag-word' : 'tag');
+        }
         if (SOURCE_CONFIG[type].fixupmetatag) {
             FixupMetatag(add_data, metatag);
         }
@@ -2102,7 +2138,7 @@ function StaticMetatagSource(term, metatag) {
         .filter((data) => data.value.startsWith(full_term))
         .sort((a, b) => a.value.localeCompare(b.value))
         .slice(0, IAC.source_results_returned);
-    AddUserSelected('metatag', "", full_term, data);
+    AddUserSelected('metatag', "", full_term, data, false);
     return data;
 }
 
@@ -2186,13 +2222,12 @@ function HighlightWords(value, tagname) {
 }
 
 function HighlightGlobs(value, tagname) {
-    console.log('HighlightGlobs', value, tagname);
+    console.log('HighlightGlobs-0', value, tagname);
     var i = 0;
     while (true) {
-        let capture_groups = JSPLib.utility.findAll(value, /\*|[^*]*/g)
-                                           .filter((val)=>val !== '')
-                                           .map((val)=>(val[0] === '*' ? '(.*)' : `(${val})`));
-        let regex = new RegExp('^' + capture_groups.join("") + '$');
+        let regex = GlobRegex(value, true);
+        let capture_groups = GlobRegex(value, true, true);
+        console.log('HighlightGlobs-1', regex, capture_groups, tagname.match(regex));
         try {
             var html_sections = tagname.match(regex).slice(1).map((match, i) => {
                 let label = match.replace(/_/g, " ");
@@ -2200,7 +2235,7 @@ function HighlightGlobs(value, tagname) {
             });
         } catch (_e) {
             if (i === 3) return;
-            JSPLib.debug.debugwarn("Found bad glob pattern... deleting old data:", tagname, regex);
+            JSPLib.debug.debugwarn("Found bad glob pattern... deleting old data:", _e, tagname, regex);
             value += '*';
             i++;
             continue;
@@ -2726,7 +2761,7 @@ function QueueRelatedTagColumnWidths() {
 
 //Main auxiliary functions
 
-async function NetworkSource(type, key, term, metatag, query_type, process = true) {
+async function NetworkSource(type, key, term, metatag, query_type, word_mode, process = true) {
     this.debug('log', "Querying", type, ':', term);
     const CONFIG = SOURCE_CONFIG[type];
     let url_addons = $.extend({limit: IAC.source_results_returned}, CONFIG.data(term));
@@ -2742,7 +2777,7 @@ async function NetworkSource(type, key, term, metatag, query_type, process = tru
         setTimeout(() => {FixExpirationCallback(key, save_data, save_data[0].value, type);}, CALLBACK_INTERVAL);
     }
     if (process) {
-        return ProcessSourceData(type, metatag, term, d, query_type, key);
+        return ProcessSourceData(type, metatag, term, d, query_type, key, word_mode);
     }
 }
 
@@ -2757,7 +2792,7 @@ function AnySourceIndexed(keycode, has_context = false) {
             return [];
         }
         var word_mode = false;
-        if (type === 'tag' && !term.startsWith('/') && !term.endsWith('*')) {
+        if (type === 'tag' && !term.startsWith('/') && !term.endsWith('*') && term.length > 1) {
             word_mode = !(
                              IAC.word_start_matches ||
                              (SOURCE_CONFIG[type] === SOURCE_CONFIG.tag2) ||
@@ -2772,25 +2807,25 @@ function AnySourceIndexed(keycode, has_context = false) {
             var max_expiration = MaximumExpirationTime(type);
             var cached = await JSPLib.storage.checkLocalDB(key, ValidateEntry, max_expiration);
             if (ValidateCached(cached, type, term, word_mode)) {
-                RecheckSourceData(type, key, term, cached);
-                return ProcessSourceData(type, use_metatag, term, cached.value, query_type, key);
+                RecheckSourceData(type, key, term, cached, word_mode);
+                return ProcessSourceData(type, use_metatag, term, cached.value, query_type, key, word_mode);
             }
         }
-        return NetworkSource(type, key, term, use_metatag, query_type);
+        return NetworkSource(type, key, term, use_metatag, query_type, word_mode);
     };
 }
 
-function RecheckSourceData(type, key, term, data) {
+function RecheckSourceData(type, key, term, data, word_mode) {
     if (IAC.recheck_data_interval > 0) {
         let recheck_time = data.expires - GetRecheckExpires();
         if (!JSPLib.utility.validateExpires(recheck_time)) {
             this.debug('log', "Rechecking", type, ':', term);
-            NetworkSource(type, key, term, null, null, false);
+            NetworkSource(type, key, term, null, null, word_mode, false);
         }
     }
 }
 
-function ProcessSourceData(type, metatag, term, data, query_type, key) {
+function ProcessSourceData(type, metatag, term, data, query_type, key, word_mode=false) {
     data.forEach((val) => {
         if (SOURCE_CONFIG[type].fixupmetatag) {
             FixupMetatag(val, metatag);
@@ -2820,7 +2855,7 @@ function ProcessSourceData(type, metatag, term, data, query_type, key) {
         }
     }
     if (IAC.usage_enabled) {
-        AddUserSelected(type, metatag, term, data, query_type);
+        AddUserSelected(type, metatag, term, data, query_type, word_mode);
     }
     if (IAC.is_bur && IAC.BUR_source_enabled) {
         let add_data = BUR_DATA.filter((data) => (term.length === 1 || data.value.startsWith(term)));
