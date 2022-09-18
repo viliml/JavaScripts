@@ -33,7 +33,23 @@
 
 //Library constants
 
-////NONE
+const LIBRARY_MENU_CSS = `
+#userscript-settings-menu .jsplib-settings-buttons input {
+    color: var(--button-primary-text-color);
+}
+#userscript-settings-menu .jsplib-console input[type=button]:not(.jsplib-commit, .jsplib-resetall):hover {
+    background: var(--form-button-background);
+}
+#userscript-settings-menu .jsplib-settings-buttons .jsplib-commit {
+    background-color: var(--green-5);
+}
+#userscript-settings-menu .jsplib-settings-buttons .jsplib-resetall {
+    background-color: var(--red-5);
+}
+#userscript-settings-menu .jsplib-settings-buttons .jsplib-commit:hover,
+#userscript-settings-menu .jsplib-settings-buttons .jsplib-resetall:hover {
+    filter: brightness(0.5);
+}`;
 
 //Exterior script variables
 const DANBOORU_TOPIC_ID = '14701';
@@ -1446,7 +1462,6 @@ function ValidateUsageData(choice_info) {
 }
 
 function ValidateCached(cached, type, term, word_mode) {
-    console.log('ValidateCached', cached, type, term, word_mode);
     if (!cached) return false;
     if (type !== 'tag') return true;
     if (word_mode) {
@@ -1558,14 +1573,16 @@ function GlobRegex(search, use_capture, return_groups = false) {
                                            .map((val) => JSPLib.utility.regexpEscape(val))
                                            .map(captureMap);
         GlobRegex.regexes[key] = new RegExp('^' + GlobRegex.capture_groups[key].join("") + '$');
-        console.log('GlobRegex', search, use_capture, GlobRegex.capture_groups[key], GlobRegex.regexes[key]);
     }
     return (return_groups ? GlobRegex.capture_groups[key] : GlobRegex.regexes[key]);
 }
 
-function WordRegex(search, use_capture) {
+function WordRegex(search, use_capture, return_groups = false) {
     WordRegex.regexes ||= {};
-    if (!(search in WordRegex.regexes)) {
+    WordRegex.capture_groups ||= {};
+    let key = search + '\xff' + use_capture;
+    if (!(key in WordRegex.regexes)) {
+        let bookend = (use_capture ? '(.*)' : '.*');
         let capture_groups = JSPLib.utility.findAll(search, /[_+-]|[^_+-]+/g)
             .filter((val)=>val !== '')
             .map((word)=>{
@@ -1576,17 +1593,16 @@ function WordRegex(search, use_capture) {
                 let escape_word = JSPLib.utility.regexpEscape(trim_word);
                 return String.raw`(?<=^|[\(_+-])` + (use_capture ? `(${escape_word})` : escape_word);
             });
-        WordRegex.regexes[search] = new RegExp(capture_groups.join(""));
-        console.log('WordRegex', search, use_capture, WordRegex.regexes[search]);
+        WordRegex.capture_groups[key] = [bookend, ...capture_groups, bookend];
+        WordRegex.regexes[key] = new RegExp(WordRegex.capture_groups[key].join("") + '(.*)');
     }
-    return WordRegex.regexes[search];
+    return (return_groups ? WordRegex.capture_groups[key] : WordRegex.regexes[key]);
 }
 
 //Get regex from separate function and memoize that value
 function GetGlobMatches(name, search, use_capture) {
     let regex = GlobRegex(search, use_capture);
     let match = name.match(regex);
-    console.log('GetGlobMatches', name, search, use_capture, regex, match);
     return match;
 }
 
@@ -1594,7 +1610,6 @@ function GetGlobMatches(name, search, use_capture) {
 function GetWordMatches(name, search, use_capture) {
     let regex = WordRegex(search, use_capture);
     let match = name.match(regex);
-    console.log('GetWordMatches', name, search, use_capture, capture_groups, regex, match);
     return match;
 }
 
@@ -1627,6 +1642,7 @@ function AutocompleteRenderItem(list, item) {
     var $tag = $("<span/>").text(item.label).addClass("autocomplete-tag");
     $link.html($tag);
     $link.attr("href", "/posts?tags=" + encodeURIComponent(item.value));
+    $link.css('display', 'flex');
     $link.on("click.danbooru", function(e) {
         e.preventDefault();
     });
@@ -1650,7 +1666,7 @@ function AutocompleteRenderItem(list, item) {
             count = JSPLib.utility.setPrecision(count / 1000, 2) + "k";
         }
 
-        var $post_count = $("<span/>").addClass("post-count").css("float", "right").text(count);
+        var $post_count = $("<span/>").addClass("post-count").text(count);
         $link.append($post_count);
     }
 
@@ -1937,7 +1953,6 @@ function GetChoiceOrder(type, query, word_mode) {
     let starts_mode = search_mode && SOURCE_CONFIG[type].searchstart;
     let regex = (search_mode ? null : (word_mode ? WordRegex(query, false) : GlobRegex(query, false)));
     let search_query = (search_mode && type === 'tag' ? queryterm.slice(0, -1) : queryterm);
-    console.log('GetChoiceOrder', type, query, word_mode, search_mode, regex, search_query);
     JSPLib.debug.debugTime('choice-order');
     let available_choices = IAC.choice_order[type].filter((name) => {
         let norm_name = name.toLowerCase();
@@ -2184,12 +2199,12 @@ function HighlightSelected($link, list, item) {
         }
     }
     if (IAC.highlight_words_enabled) {
-        console.log(item);
         let term = item.term;
         let [tagname, tagclass] = (item.antecedent ? [item.antecedent, 'autocomplete-antecedent'] : [item.value, 'autocomplete-tag']);
         let highlight_html = (item.source === 'tag-word' ? HighlightWords(term, tagname) : HighlightGlobs(term, tagname) );
-        console.log(term, tagname, tagclass, highlight_html);
-        $link.find('.' + tagclass).html(highlight_html);
+        if (highlight_html) {
+            $link.find('.' + tagclass).html(highlight_html);
+        }
     }
     if (item.source == 'metatag') {
         $('a', $link).addClass('tag-type-' + item.category);
@@ -2202,46 +2217,29 @@ function HighlightSelected($link, list, item) {
 }
 
 function HighlightWords(value, tagname) {
-    let words = value.split(/[_-]/g).map((word)=>JSPLib.utility.regexpEscape(word.replace(/[()[\]]+/g, "")));
-    let regex = new RegExp(`^(${words.join('|')})?(.*)`);
-    let tokens = tagname.split(/[_-]/g);
-    let delimiters = tagname.split(/[^_-]+/g);
-    let values = tokens.map((val)=>{
-        let [ ,prefix, word, suffix] = val.match(/(^|[(\[]+)([^(\[\])]*)($|[)\]]+)/);
-        let [ ,match, remainder] = word.match(regex);
-        word = (match ? `<span class="iac-word-match">${match}</span>` : "") + remainder;
-        return prefix + word + suffix;
+    let regex = WordRegex(value, true);
+    let capture_groups = WordRegex(value, true, true);
+    let match = tagname.match(regex);
+    console.log('HighlightWords', value, tagname, regex, capture_groups, match);
+    if (!match) return null;
+    let html_sections = match.slice(1).map((match, i) => {
+        let label = match.replace(/_/g, " ");
+        return (capture_groups[i] !== '(.*)' ? `<span class="iac-word-match">${label}</span>` : label);
     });
-    let html = "";
-    let loop_length = Math.max(tokens.length, delimiters.length);
-    for (let i = 0; i < loop_length; i++) {
-        html += (delimiters[i] === '_' ? ' ' : delimiters[i] ?? "");
-        html += values[i] ?? "";
-    }
-    return html;
+    return html_sections.join("");
 }
 
 function HighlightGlobs(value, tagname) {
-    console.log('HighlightGlobs-0', value, tagname);
-    var i = 0;
-    while (true) {
-        let regex = GlobRegex(value, true);
-        let capture_groups = GlobRegex(value, true, true);
-        console.log('HighlightGlobs-1', regex, capture_groups, tagname.match(regex));
-        try {
-            var html_sections = tagname.match(regex).slice(1).map((match, i) => {
-                let label = match.replace(/_/g, " ");
-                return (capture_groups[i] !== '(.*)' ? `<span class="iac-word-match">${label}</span>` : label);
-            });
-        } catch (_e) {
-            if (i === 3) return;
-            JSPLib.debug.debugwarn("Found bad glob pattern... deleting old data:", _e, tagname, regex);
-            value += '*';
-            i++;
-            continue;
-        }
-        return html_sections.join("");
-    }
+    let regex = GlobRegex(value, true);
+    let capture_groups = GlobRegex(value, true, true);
+    let match = tagname.match(regex);
+    console.log('HighlightGlobs', value, tagname, regex, capture_groups, match);
+    if (!match) return null;
+    let html_sections = match.slice(1).map((match, i) => {
+        let label = match.replace(/_/g, " ");
+        return (capture_groups[i] !== '(.*)' ? `<span class="iac-word-match">${label}</span>` : label);
+    });
+    return html_sections.join("");
 }
 
 function CorrectUsageData() {
@@ -2830,7 +2828,7 @@ function ProcessSourceData(type, metatag, term, data, query_type, key, word_mode
         if (SOURCE_CONFIG[type].fixupmetatag) {
             FixupMetatag(val, metatag);
         }
-        val.term = term;
+        val.term = ((term.length > 1 || term === '*') ? term : term + '*');
         val.key = key;
     });
     KeepSourceData(type, metatag, data);
@@ -2841,11 +2839,8 @@ function ProcessSourceData(type, metatag, term, data, query_type, key, word_mode
         if (IAC.metatag_source_enabled) {
             if (query_type !== 'tag') {
                 let regex = new RegExp('^' + JSPLib.utility.regexpEscape(term).replace(/\\\*/g, '.*'));
-                console.log('Metatag regex:', regex);
                 let filter_data = MetatagData().filter((data) => data.value.match(regex));
-                console.log('Filter data:', filter_data);
                 let metatag_term = term + (term.endsWith('*') ? "" : '*');
-                console.log('Metatag term:', metatag_term);
                 let add_data = filter_data.map((item) => Object.assign({term: metatag_term}, item));
                 data.unshift(...add_data);
             }
@@ -3177,7 +3172,7 @@ function Main() {
         default_data: DEFAULT_VALUES,
         initialize_func: InitializeProgramValues,
         broadcast_func: BroadcastIAC,
-        menu_css: SETTINGS_MENU_CSS,
+        menu_css: SETTINGS_MENU_CSS + '\n' + LIBRARY_MENU_CSS,
     };
     if (!JSPLib.menu.preloadScript(IAC, RenderSettingsMenu, preload)) return;
     InstallQuickSearchBars();
