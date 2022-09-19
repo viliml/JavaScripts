@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IndexedAutocomplete (Highlight-BETA)
 // @namespace    https://github.com/BrokenEagle/JavaScripts
-// @version      29.A
+// @version      29.B
 // @description  Uses Indexed DB for autocomplete, plus caching of other data.
 // @source       https://danbooru.donmai.us/users/23799
 // @author       BrokenEagle
@@ -342,14 +342,12 @@ const METATAG_TAG_CATEGORY = 500;
 //CSS Constants
 
 const PROGRAM_CSS = `
-.iac-user-choice {
-    background: aqua;
-}
 .iac-tag-alias a {
     font-style: italic;
 }
 .iac-tag-highlight {
     margin-top: -5px;
+    margin-bottom: 5px;
 }
 .iac-tag-highlight > div:before {
     content: "●";
@@ -386,7 +384,6 @@ const PROGRAM_CSS = `
 }
 .iac-highlight-match {
     font-weight: bold;
-    filter: brightness(0.75);
 }
 .related-tags .current-related-tags-columns li:before {
     content: "*";
@@ -399,8 +396,14 @@ const PROGRAM_CSS = `
     visibility: visible;
 }
 /** DARK/LIGHT Color Setup **/
+body[data-current-user-theme=light] .iac-user-choice {
+    background-color: cyan;
+}
 body[data-current-user-theme=light] .iac-already-used {
     background-color: #FFFFAA;
+}
+body[data-current-user-theme=light] .iac-user-choice.iac-already-used {
+    background: linear-gradient(to right, #FFFFAA, cyan);
 }
 body[data-current-user-theme=light] .iac-tag-metatag > div:before,
 body[data-current-user-theme=light] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
@@ -408,8 +411,17 @@ body[data-current-user-theme=light] .iac-tag-highlight .tag-type-${METATAG_TAG_C
 body[data-current-user-theme=light] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
     color: #000;
 }
+body[data-current-user-theme=light] .iac-highlight-match {
+    filter: brightness(0.75);
+}
+body[data-current-user-theme=dark] .iac-user-choice {
+    background-color: #444488;
+}
 body[data-current-user-theme=dark] .iac-already-used {
     background-color: #666622;
+}
+body[data-current-user-theme=dark] .iac-user-choice.iac-already-used {
+    background: linear-gradient(to right, #666622, #444488);
 }
 body[data-current-user-theme=dark] .iac-tag-metatag > div:before,
 body[data-current-user-theme=dark] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
@@ -417,26 +429,47 @@ body[data-current-user-theme=dark] .iac-tag-highlight .tag-type-${METATAG_TAG_CA
 body[data-current-user-theme=dark] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
     color: #FFF;
 }
+body[data-current-user-theme=dark] .iac-highlight-match {
+    filter: brightness(1.25);
+}
 @media (prefers-color-scheme: light) {
-    .iac-already-used {
+    body[data-current-user-theme=auto] .iac-user-choice {
+        background-color: cyan;
+    }
+    body[data-current-user-theme=auto] .iac-already-used {
         background-color: #FFFFAA;
     }
-    .iac-tag-metatag > div:before,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:visited,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
+    body[data-current-user-theme=auto] .iac-user-choice.iac-already-used {
+        background: linear-gradient(to right, #FFFFAA, cyan);
+    }
+    body[data-current-user-theme=auto] .iac-tag-metatag > div:before,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:visited,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
         color: #000;
+    }
+    body[data-current-user-theme=auto] .iac-highlight-match {
+        filter: brightness(0.75);
     }
 }
 @media (prefers-color-scheme: dark) {
-    .iac-already-used {
+    body[data-current-user-theme=auto] .iac-user-choice {
+        background-color: #444488;
+    }
+    body[data-current-user-theme=auto] .iac-already-used {
         background-color: #666622;
     }
-    .iac-tag-metatag > div:before,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:visited,
-    .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
+    body[data-current-user-theme=auto] .iac-user-choice.iac-already-used {
+        background: linear-gradient(to right, #666622, #444488);
+    }
+    body[data-current-user-theme=auto] .iac-tag-metatag > div:before,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:link,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:visited,
+    body[data-current-user-theme=auto] .iac-tag-highlight .tag-type-${METATAG_TAG_CATEGORY}:hover {
         color: #FFF;
+    }
+    body[data-current-user-theme=auto] .iac-highlight-match {
+        filter: brightness(1.25);
     }
 }
 `;
