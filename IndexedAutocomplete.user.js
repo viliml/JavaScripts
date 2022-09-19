@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         IndexedAutocomplete
+// @name         IndexedAutocomplete (Highlight-BETA)
 // @namespace    https://github.com/BrokenEagle/JavaScripts
-// @version      29.10
+// @version      29.A
 // @description  Uses Indexed DB for autocomplete, plus caching of other data.
 // @source       https://danbooru.donmai.us/users/23799
 // @author       BrokenEagle
@@ -9,8 +9,8 @@
 // @exclude      /^https?://\w+\.donmai\.us/.*\.(xml|json|atom)(\?|$)/
 // @grant        none
 // @run-at       document-idle
-// @downloadURL  https://raw.githubusercontent.com/BrokenEagle/JavaScripts/master/IndexedAutocomplete.user.js
-// @updateURL    https://raw.githubusercontent.com/BrokenEagle/JavaScripts/master/IndexedAutocomplete.user.js
+// @downloadURL  https://raw.githubusercontent.com/BrokenEagle/JavaScripts/iac-highlight-matches/IndexedAutocomplete.user.js
+// @updateURL    https://raw.githubusercontent.com/BrokenEagle/JavaScripts/iac-highlight-matches/IndexedAutocomplete.user.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/validate.js/0.13.1/validate.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
@@ -342,8 +342,8 @@ const METATAG_TAG_CATEGORY = 500;
 //CSS Constants
 
 const PROGRAM_CSS = `
-.iac-user-choice a {
-    font-weight: bold;
+.iac-user-choice {
+    background: aqua;
 }
 .iac-tag-alias a {
     font-style: italic;
@@ -385,8 +385,8 @@ const PROGRAM_CSS = `
     color: #888;
 }
 .iac-highlight-match {
+    font-weight: bold;
     filter: brightness(0.75);
-    text-decoration: underline;
 }
 .related-tags .current-related-tags-columns li:before {
     content: "*";
@@ -1986,8 +1986,8 @@ function KeepSourceData(type, metatag, data) {
 }
 
 function GetChoiceOrder(type, query, word_mode) {
-    let queryterm = query.toLowerCase();
-    let regex = (word_mode ? WordRegex(query, false) : GlobRegex(query, false));
+    let queryterm = query.toLowerCase() + (type === 'metatag' && !query.endsWith('*') ? '*' : "");
+    let regex = (word_mode ? WordRegex(queryterm, false) : GlobRegex(queryterm, false));
     let available_choices = IAC.choice_order[type].filter((name) => {
         return name.toLowerCase().match(regex);
     });
@@ -2005,7 +2005,7 @@ function AddUserSelected(type, metatag, term, data, query_type, word_mode, key) 
     }
     let user_order = GetChoiceOrder(type, term, word_mode);
     for (let i = user_order.length - 1; i >= 0; i--) {
-        let checkterm = metatag + user_order[i];
+        let checkterm = user_order[i];
         if (query_type === 'tag' && choice[checkterm].category === METATAG_TAG_CATEGORY) {
             continue;
         }
@@ -2022,9 +2022,7 @@ function AddUserSelected(type, metatag, term, data, query_type, word_mode, key) 
         if (type === 'tag' && ['tag', 'tag-word'].includes(add_data.source)) {
             add_data.source = (word_mode ? 'tag-word' : 'tag');
         }
-        if (type !== 'metatag') {
-            FixupMetatag(add_data, metatag);
-        }
+        FixupMetatag(add_data, metatag);
         data.unshift(add_data);
         IAC.shown_data.push(user_order[i]);
     }
@@ -2156,8 +2154,11 @@ function InsertCompletion(input, completion) {
         setTimeout(() => {DisableTextAreaAutocomplete($input);}, 100);
     } else {
         var query = ParseQuery(input.value, input.selectionStart);
+        var select = ParseQuery(completion, completion.length);
         before_caret_text = before_caret_text.substring(0, before_caret_text.search(/\S+$/));
-        before_caret_text += query.prefix + completion + ' ';
+        var prefix = (query.metatag !== "tag" ? (query.prefix || select.prefix) : "");
+        var name = (query.metatag === "tag" ? completion : select.term);
+        before_caret_text += prefix + name + ' ';
         start = end = before_caret_text.length;
     }
     input.value = before_caret_text + after_caret_text;
@@ -2221,6 +2222,7 @@ function HighlightSelected($link, list, item) {
     if (IAC.highlight_words_enabled) {
         let term = item.term;
         if (item.type === 'tag' || item.type === 'metatag') {
+            term += (item.source === 'metatag' && !item.term.endsWith('*') ? '*' : "");
             let [tagname, tagclass] = (item.antecedent ? [item.antecedent, 'autocomplete-antecedent'] : [item.name, 'autocomplete-tag']);
             let highlight_html = (item.source === 'tag-word' ? HighlightWords(term, tagname) : HighlightGlobs(term, tagname, item.type));
             if (highlight_html) {
@@ -2247,10 +2249,10 @@ function HighlightSelected($link, list, item) {
 function HighlightWords(search, name) {
     let regex = WordRegex(search, true);
     let capture_groups = WordRegex(search, true, true);
-    let match = name.match(regex);
-    if (!match) return null;
-    let html_sections = match.slice(1).map((match, i) => {
-        let label = match.replace(/_/g, " ");
+    let word_match = name.match(regex);
+    if (!word_match) return null;
+    let html_sections = word_match.slice(1).map((match, i) => {
+        let label = match.replace(/_/g, "&nbsp;");
         return (capture_groups[i] !== '(.*)' ? `<span class="iac-highlight-match iac-word-match">${label}</span>` : label);
     });
     return html_sections.join("");
@@ -2259,10 +2261,10 @@ function HighlightWords(search, name) {
 function HighlightGlobs(search, name) {
     let regex = GlobRegex(search, true);
     let capture_groups = GlobRegex(search, true, true);
-    let match = name.match(regex);
-    if (!match) return null;
-    let html_sections = match.slice(1).map((match, i) => {
-        let label = match.replace(/_/g, " ");
+    let glob_match = name.match(regex);
+    if (!glob_match) return null;
+    let html_sections = glob_match.slice(1).map((match, i) => {
+        let label = match.replace(/_/g, "&nbsp;");
         return (capture_groups[i] !== '(.*)' ? `<span class="iac-highlight-match iac-glob-match">${label}</span>` : label);
     });
     return html_sections.join("");
@@ -2873,9 +2875,7 @@ function RecheckSourceData(type, key, term, data, word_mode) {
 
 function ProcessSourceData(type, metatag, term, data, query_type, key, word_mode=false) {
     data.forEach((val) => {
-        if (type !== 'metatag') {
-            FixupMetatag(val, metatag);
-        }
+        FixupMetatag(val, metatag);
         Object.assign(val, {term, key, type});
     });
     KeepSourceData(type, metatag, data);
@@ -3262,7 +3262,7 @@ function Main() {
 
 //Variables for debug.js
 JSPLib.debug.debug_console = true;
-JSPLib.debug.level = JSPLib.debug.VERBOSE;
+JSPLib.debug.level = JSPLib.debug.INFO;
 JSPLib.debug.program_shortcut = PROGRAM_SHORTCUT;
 
 //Variables for menu.js
