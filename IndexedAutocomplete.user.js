@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IndexedAutocomplete (Highlight-BETA)
 // @namespace    https://github.com/BrokenEagle/JavaScripts
-// @version      29.B
+// @version      29.C
 // @description  Uses Indexed DB for autocomplete, plus caching of other data.
 // @source       https://danbooru.donmai.us/users/23799
 // @author       BrokenEagle
@@ -1702,6 +1702,9 @@ function ExpirationTime(type, count) {
 function AutocompleteRenderItem(list, item) {
     if ('html' in item) {
         return Danbooru.Autocomplete.render_item_old(list, item);
+    }
+    if (SOURCE_CONFIG[item.type].render) {
+        return RenderListItem(SOURCE_CONFIG[item.type].render)(list, item);
     }
     let tag_info = `<span class="autocomplete-tag">${item.label}</span>`;
     if (item.antecedent) {
