@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         TranslatorAssist
 // @namespace    https://github.com/BrokenEagle/JavaScripts
-// @version      5.0
+// @version      6.0
 // @description  Provide information and tools for help with translations.
 // @source       https://danbooru.donmai.us/users/23799
 // @author       BrokenEagle
 // @match        https://*.donmai.us/posts/*
 // @match        https://*.donmai.us/settings
 // @exclude      /^https?://\w+\.donmai\.us/.*\.(xml|json|atom)(\?|$)/
-// @grant        none
+// @grant        GM.xmlHttpRequest
 // @run-at       document-idle
 // @downloadURL  https://raw.githubusercontent.com/BrokenEagle/JavaScripts/master/TranslatorAssist.user.js
 // @updateURL    https://raw.githubusercontent.com/BrokenEagle/JavaScripts/master/TranslatorAssist.user.js
@@ -21,6 +21,7 @@
 // @require      https://raw.githubusercontent.com/BrokenEagle/JavaScripts/20220515/lib/danbooru.js
 // @require      https://raw.githubusercontent.com/BrokenEagle/JavaScripts/20220515/lib/load.js
 // @require      https://raw.githubusercontent.com/BrokenEagle/JavaScripts/20220515/lib/menu.js
+// @connect      validator.nu
 // ==/UserScript==
 
 /* global $ JSPLib Danbooru */
@@ -43,6 +44,7 @@ const PROGRAM_LOAD_OPTIONAL_SELECTORS = ['#c-posts #a-show .image-container', '#
 const PROGRAM_SHORTCUT = 'ta';
 const PROGRAM_CLICK = 'click.ta';
 const PROGRAM_KEYDOWN = 'keydown.ta';
+const PROGRAM_KEYUP = 'keyup.ta';
 const PROGRAM_NAME = 'TranslatorAssist';
 
 //Main program variable
@@ -64,7 +66,7 @@ const DEFAULT_VALUES = {
 
 //Available setting values
 const HTML_STYLE_TAGS = ['div', 'span'];
-const HTML_ONLY_TAGS = ['b', 'i', 'u', 's', 'tn', 'small', 'big', 'code', 'center', 'p'];
+const HTML_ONLY_TAGS = ['b', 'i', 'u', 's', 'tn', 'center', 'p', 'small', 'big', 'code'];
 const HTML_TAGS = JSPLib.utility.concat(HTML_STYLE_TAGS, HTML_ONLY_TAGS);
 const HTML_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'margin', 'padding', 'white-space', 'background-color'];
 const OUTER_RUBY_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-decoration', 'line-height', 'letter-spacing', 'padding', 'white-space', 'background-color'];
@@ -590,14 +592,14 @@ const SIDE_MENU = `
                 <div class="ta-header ta-cursor-text">Actions:</div>
                 <div id="ta-main-actions-subsection" class="ta-subsection ta-cursor-initial">
                     <button id="ta-delete-block" title="Delete HTML tag">Delete</button>
-                    <button id="ta-undo-action" disabled title="Undo the last action">Undo</button>
-                    <button id="ta-redo-action" disabled title="Redo the last action">Redo</button>
+                    <button id="ta-undo-action" title="Undo the last action">Undo</button>
+                    <button id="ta-redo-action" title="Redo the last action">Redo</button>
                 </div>
                 <div class="ta-header ta-cursor-text">Process:</div>
                 <div id="ta-main-process-subsection" class="ta-subsection ta-cursor-initial">
                     <button id="ta-normalize-note" title="Fix missing HTML tags">Fix</button>
                     <button id="ta-sanitize-note" title="Have Danbooru render HTML">Sanitize</button>
-                    <button id="ta-validate-note" disabled title="Validate HTML contents">Validate</button>
+                    <button id="ta-validate-note" title="Validate HTML contents">Validate</button>
                 </div>
                 <hr>
             </div>
@@ -809,6 +811,9 @@ const LOAD_DIALOG = `
 </div>`;
 
 const NO_SESSIONS = '<div style="font-style: italic; padding: 0.5em;">There are no sessions saved.</div>';
+
+const HTML_DOC_HEADER = '<!DOCTYPE html><html lang="en"><head><title>Blah</title></head><body>\n';
+const HTML_DOC_FOOTER = '\n</body></html>';
 
 //Menu constants
 
@@ -1079,6 +1084,12 @@ const RUBY_DIALOG_SETTINGS = {
             'text': 'Apply',
             'click': ApplyRubyTag,
         }, {
+            'text': 'Undo',
+            'click': UndoAction,
+        }, {
+            'text': 'Redo',
+            'click': RedoAction,
+        }, {
             'text': 'Close',
             'click' () {
                 $(this).dialog('close');
@@ -1320,7 +1331,8 @@ function RenderLoadItem(item) {
 
 function RenderHTMLBlockButtons() {
     let block_html = "";
-    TA.user_settings.available_html_tags.forEach((tag) => {
+    HTML_TAGS.forEach((tag) => {
+        if (!TA.user_settings.available_html_tags.includes(tag)) return;
         let button_class = (HTML_STYLE_TAGS.includes(tag) ? 'ta-html-style-tag' : 'ta-html-only-tag');
         block_html += `<button class="ta-apply-block-element ${button_class}" value="${tag}">${tag}</button>`;
     });
@@ -1386,6 +1398,43 @@ function RenderCharButtons(char_list) {
     return html;
 }
 
+function RenderHTMLError(iteration, message, input_html) {
+    let number = JSPLib.utility.padNumber(iteration + 1, 2);
+    if (!('firstColumn' in message)) {
+        return `<li><b>${number}.</b> ${message.message}</li>`;
+    }
+    var highlight_html, row, column;
+    let line = input_html.split('\n')[message.lastLine - 2];
+    if (line !== undefined) {
+        highlight_html = '<code>' + JSPLib.utility.HTMLEscape(line.slice(message.firstColumn - 1, message.lastColumn)) + '</code>';
+        row = message.lastLine - 1;
+        column = message.firstColumn;
+    } else {
+        highlight_html = row = column = '<em>N/A</em>';
+    }
+    return `
+<li><b>${number}.</b> ${message.message}
+    <ul style="list-style: inside;">
+        <li>Line: ${row}</li>
+        <li>Column: ${column}</li>
+        <li>HTML: ${highlight_html}</li>
+    </ul>
+</li>`;
+}
+
+function RenderCSSError(iteration, error) {
+    let highlight_html = JSPLib.utility.HTMLEscape(error.excerpt);
+    let message_html = JSPLib.utility.HTMLEscape(error.message);
+    let letter = String.fromCharCode(65 + iteration);
+    return `
+<li><b>${letter}.</b> ${message_html}
+    <ul style="list-style: inside;">
+        <li>Position: ${error.index}</li>
+        <li>CSS: <code>${highlight_html}</code></li>
+    </ul>
+</li>`;
+}
+
 //Network functions
 
 function QueryNoteVersions(search_options, query_options) {
@@ -1430,6 +1479,36 @@ function QueryLastNotation() {
         ToggleSideMenu(true, false);
         TA.last_id = data[0]?.id || TA.last_id;
     });
+}
+
+async function ValidateHTML(input_html) {
+    let send_html = HTML_DOC_HEADER + input_html + HTML_DOC_FOOTER;
+    try {
+        //Replace this with a JSPLib.network.post version
+        var resp = await GM.xmlHttpRequest({
+            method: 'POST',
+            url: 'https://validator.nu?out=json',
+            headers: {'Content-Type': "text/html; charset=UTF-8"},
+            data: send_html,
+        });
+    } catch(e) {
+        JSPLib.notice.error("Error querying validation server <code>validator.nu</code>");
+        JSPLib.debug.debugerror("Server error:", e);
+        return null;
+    }
+    try {
+        var data = JSON.parse(resp.response);
+    } catch(e) {
+        JSPLib.notice.error("Unable to parse validation response!");
+        JSPLib.debug.debugerror("Parse error:", e, resp.response);
+        return null;
+    }
+    if (!JSPLib.validate.isHash(data) || !('messages' in data)) {
+        JSPLib.notice.error("Unexpected response format!");
+        JSPLib.debug.debugerror("Unexpected format:", data);
+        return null;
+    }
+    return data;
 }
 
 //// HTML functions
@@ -1612,6 +1691,48 @@ function GetRubyTag(html_text, cursor) {
     let top_ruby_tags = base_inner_tags.filter((html_tag) => (html_tag.tag_name === 'rt'));
     let bottom_ruby_tags = base_inner_tags.filter((html_tag) => (html_tag.tag_name === 'span'));
     return {overall: overall_ruby_tag, top: top_ruby_tags, bottom: bottom_ruby_tags, temp_inner_tags, html_tags};
+}
+
+function ValidateCSS(input_html) {
+    let $validator = $('<div></div>');
+    let valid_styles = Object.keys($validator[0].style).map(JSPLib.utility.kebabCase);
+    let error_array = [];
+    for (let match of input_html.matchAll(/(style\s*=\s*")([^"]+)"/g)) {
+        let style_index = match.index + match[1].length + 1; // One-based positioning
+        let styles = match[2].replace(/\s*;\s*$/, '').split(';'); // Remove the final semi-colon
+        for (let i = 0; i < styles.length; style_index += styles[i++].length + 1) {
+            let error = {
+                excerpt: styles[i],
+                index: style_index,
+            };
+            let [attr,value,...misc] = styles[i].split(':');
+            if (misc.length) {
+                error_array.push(Object.assign({message: "Extra colons found."}, error));
+                continue;
+            }
+            attr = attr.trim();
+            if (value === undefined) {
+                if (attr.length === 0) {
+                    error.excerpt += ';';
+                    error_array.push(Object.assign({message: "Extra-semi colon found."}, error));
+                } else {
+                    error_array.push(Object.assign({message: "No colons found."}, error));
+                }
+                continue;
+            }
+            if (!valid_styles.includes(attr)) {
+                error_array.push(Object.assign({message: "Invalid style attribute: " + attr}, error));
+                continue;
+            }
+            let attr_key = JSPLib.utility.camelCase(attr);
+            value = value.replace(/\s*!important\s*$/, "").trim();
+            $validator[0].style[attr_key] = value;
+            if ($validator[0].style[attr_key] === "") {
+                error_array.push(Object.assign({message: "Invalid style value: " + value}, error));
+            }
+        }
+    }
+    return error_array;
 }
 
 // DOM functions
@@ -1947,10 +2068,8 @@ function BuildTextShadowStyle() {
     let attribs = Object.assign(...$('#ta-text-shadow-attribs input').map((i, entry) => ({[entry.dataset.name.trim()]: entry.value})));
     if (attribs.size === "") {
         return "";
-    } 
-    if (!ValidateSize(attribs.size)) {
-        errors.push("Invalid size specified.");
     }
+    if (!ValidateSize(attribs.size)) errors.push("Invalid size specified.");
     if ((attribs.color !== "") && !ValidateColor(attribs.color)) errors.push("Invalid color specified.");
     if ((attribs.blur !== "") && !ValidateSize(attribs.blur)) errors.push("Invalid blur specified.");
     if (errors.length) {
@@ -2153,6 +2272,7 @@ function CopyTagStyles() {
 function ApplyTagStyles() {
     let text_area = GetActiveTextArea(false);
     if (!text_area) return;
+    SaveHTML(text_area);
     let html_tag = GetTag(text_area.value, text_area.selectionStart);
     if (!html_tag) return;
     let overwrite = $('#ta-css-style-overwrite').get(0)?.checked;
@@ -2192,6 +2312,7 @@ function LoadTagStyles() {
 function ApplyBlock(event) {
     let text_area = GetActiveTextArea(false);
     if (!text_area) return;
+    SaveHTML(text_area);
     if (IsInsideHTMLTag(text_area.value, text_area.selectionStart)) {
         ChangeBlockElement(text_area, event.currentTarget.value);
     } else {
@@ -2203,15 +2324,77 @@ function DeleteBlock() {
     let text_area = GetActiveTextArea(false);
     if (!text_area) return;
     if (IsInsideHTMLTag(text_area.value, text_area.selectionStart)) {
+        SaveHTML(text_area);
         DeleteBlockElement(text_area);
     } else {
         JSPLib.notice.error("No tag selected!");
     }
 }
 
+function SaveHTML(text_area) {
+    let $text_area = $(text_area);
+    let undo_actions = $text_area.data('undo_actions') || [];
+    let undo_index = $text_area.data('undo_index') || 0;
+    undo_actions = undo_actions.slice(0, undo_index);
+    undo_actions.push(text_area.value);
+    $text_area.data('undo_actions', undo_actions);
+    $text_area.data('undo_index', undo_actions.length);
+    $text_area.data('undo_saved', true);
+    JSPLib.debug.debuglog('SaveMarkup', {undo_actions, undo_index});
+}
+
+function UndoAction() {
+    let text_area = GetActiveTextArea(false);
+    if (!text_area) return;
+    let $text_area = $(text_area);
+    let {undo_actions = [], undo_index = 0, undo_saved} = $text_area.data();
+    if (undo_saved) {
+        undo_actions.push(text_area.value);
+        $text_area.data('undo_actions', undo_actions);
+    }
+    let undo_html = undo_actions.slice(undo_index - 1, undo_index)[0];
+    if (JSPLib.validate.isString(undo_html)) {
+        text_area.value = undo_html;
+    } else {
+        JSPLib.notice.notice("Beginning of actions buffer reached.");
+    }
+    let new_index = Math.max(0, undo_index - 1);
+    $text_area.data('undo_index', new_index);
+    $text_area.data('undo_saved', false);
+    JSPLib.debug.debuglog('UndoAction', {undo_actions, undo_index, new_index});
+    return Boolean(undo_html);
+}
+
+function RedoAction() {
+    let text_area = GetActiveTextArea(false);
+    if (!text_area) return;
+    let $text_area = $(text_area);
+    let {undo_actions = [], undo_index = 0} = $text_area.data();
+    let undo_html = undo_actions.slice(undo_index + 1, undo_index + 2)[0];
+    if (undo_html) {
+        text_area.value = undo_html;
+    } else {
+        JSPLib.notice.notice("End of actions buffer reached.");
+    }
+    let new_index = Math.min(undo_actions.length - 1, undo_index + 1);
+    $text_area.data('undo_index', new_index);
+    $text_area.data('undo_saved', false);
+    JSPLib.debug.debuglog('RedoAction', {undo_actions, undo_index, new_index});
+    return Boolean(undo_html);
+}
+
+function ClearActions(event) {
+    let $text_area = $(event.currentTarget);
+    $text_area.data('undo_actions', []);
+    $text_area.data('undo_index', 0);
+    $text_area.data('undo_saved', false);
+    JSPLib.debug.debuglog('Cleared actions.');
+}
+
 function NormalizeNote() {
     let text_area = GetActiveTextArea();
     if (!text_area) return;
+    SaveHTML(text_area);
     let html_text = text_area.value;
     let normalized_text = $('<div>' + html_text + '</div>').html();
     text_area.value = normalized_text;
@@ -2221,9 +2404,33 @@ function NormalizeNote() {
 async function SanitizeNote() {
     let text_area = GetActiveTextArea();
     if (!text_area) return;
+    SaveHTML(text_area);
     let data = await JSPLib.danbooru.submitRequest('note_previews', {body: text_area.value});
     text_area.value = data.body;
     text_area.focus();
+}
+
+async function ValidateNote() {
+    let text_area = GetActiveTextArea();
+    if (!text_area) return;
+    let transform_html = text_area.value.replace(/<tn>/g, '<p class="tn">').replace(/<\/tn>/g, '</p>');
+    let html_errors = await ValidateHTML(transform_html);
+    if (html_errors === null) {
+        return;
+    }
+    let error_lines = [];
+    if (html_errors.messages.length) {
+        JSPLib.debug.debuglog("HTML errors:", html_errors);
+        error_lines = html_errors.messages.map((message,i) => RenderHTMLError(i, message, transform_html));
+    }
+    let css_errors = ValidateCSS(text_area.innerHTML);
+    if (css_errors.length) {
+        JSPLib.debug.debuglog("CSS errors:", css_errors);
+        error_lines = JSPLib.utility.concat(error_lines, css_errors.map((error, i) => RenderCSSError(i, error)));
+    }
+    if (error_lines.length) {
+        JSPLib.notice.error('<ul>' + error_lines.join('') + '</ul>');
+    }
 }
 
 //// Constructs section handlers
@@ -2297,6 +2504,7 @@ function ToggleEmbeddedMode() {
 function AddEmbeddedElement() {
     let text_area = GetActiveTextArea(false);
     if (!text_area) return;
+    SaveHTML(text_area);
     let html_text = text_area.value;
     let html_tag = GetTag(html_text, text_area.selectionStart, false);
     if (html_tag) {
@@ -2320,6 +2528,7 @@ function AddEmbeddedElement() {
 function RemoveEmbeddedElement() {
     let text_area = GetActiveTextArea();
     if (!text_area) return;
+    SaveHTML(text_area);
     let html_text = text_area.value;
     let html_tag = GetTag(html_text, text_area.selectionStart);
     if (!html_tag) return;
@@ -2329,6 +2538,7 @@ function RemoveEmbeddedElement() {
 function SetEmbeddedLevel() {
     let text_area = GetActiveTextArea();
     if (!text_area) return;
+    SaveHTML(text_area);
     let html_text = text_area.value;
     let html_tag = GetTag(html_text, text_area.selectionStart);
     if (!html_tag) return;
@@ -2564,6 +2774,7 @@ function CopyRubyTag() {
 function ApplyRubyTag() {
     let text_area = GetActiveTextArea(false);
     if (!text_area) return;
+    SaveHTML(text_area);
     let ruby_tag = GetRubyTag(text_area.value, text_area.selectionStart);
     if (!ruby_tag && IsInsideHTMLTag(text_area.value, text_area.selectionStart)) {
         JSPLib.notice.error(`Invalid selection range at cursor start... cannot create a ruby tag inside another tag.`);
@@ -2780,8 +2991,12 @@ function InitializeSideMenu() {
     $('#ta-set-embedded-level').on(PROGRAM_CLICK, SetEmbeddedLevel);
     $('.ta-apply-block-element').on(PROGRAM_CLICK, ApplyBlock);
     $('#ta-delete-block').on(PROGRAM_CLICK, DeleteBlock);
+    $('#ta-undo-action').on(PROGRAM_CLICK, UndoAction);
+    $('#ta-redo-action').on(PROGRAM_CLICK, RedoAction);
+    $(document).on(PROGRAM_KEYUP, '.note-edit-dialog textarea', ClearActions);
     $('#ta-normalize-note').on(PROGRAM_CLICK, NormalizeNote);
     $('#ta-sanitize-note').on(PROGRAM_CLICK, SanitizeNote);
+    $('#ta-validate-note').on(PROGRAM_CLICK, ValidateNote);
     $('#ta-text-shadow-controls a').on(PROGRAM_CLICK, TextShadowControls);
     $('#ta-ruby-dialog-open').on(PROGRAM_CLICK, OpenRubyDialog);
     JSPLib.utility.clickAndHold('#ta-placement-controls .ta-button-placement', PlacementControl, PROGRAM_SHORTCUT);
@@ -2870,7 +3085,7 @@ function Main() {
 /****Initialization****/
 
 //Variables for debug.js
-JSPLib.debug.debug_console = false;
+JSPLib.debug.debug_console = true;
 JSPLib.debug.level = JSPLib.debug.INFO;
 JSPLib.debug.program_shortcut = PROGRAM_SHORTCUT;
 
