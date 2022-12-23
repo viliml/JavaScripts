@@ -25,6 +25,7 @@
 // ==/UserScript==
 
 /* global $ JSPLib Danbooru */
+/* eslint-disable dot-notation */
 
 /****Global variables****/
 
@@ -68,11 +69,11 @@ const DEFAULT_VALUES = {
 const HTML_STYLE_TAGS = ['div', 'span'];
 const HTML_ONLY_TAGS = ['b', 'i', 'u', 's', 'tn', 'center', 'p', 'small', 'big', 'code'];
 const HTML_TAGS = JSPLib.utility.concat(HTML_STYLE_TAGS, HTML_ONLY_TAGS);
-const HTML_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'margin', 'padding', 'white-space', 'background-color'];
+const HTML_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'margin', 'padding', 'white-space', 'background-color', 'transform'];
 const OUTER_RUBY_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-decoration', 'line-height', 'letter-spacing', 'padding', 'white-space', 'background-color'];
 const INNER_RUBY_STYLES = ['color', 'font-size', 'font-family', 'font-weight', 'font-style', 'font-variant', 'text-decoration', 'letter-spacing'];
 const RUBY_STYLES = OUTER_RUBY_STYLES;
-const EMBEDDED_STYLES = ['border-radius', 'transform', 'background-color', 'justify-content', 'align-items'];
+const EMBEDDED_STYLES = ['border-radius', 'rotate', 'background-color', 'justify-content', 'align-items'];
 
 //Main settings
 const SETTINGS_CONFIG = {
@@ -102,6 +103,11 @@ const SETTINGS_CONFIG = {
         parse: parseInt,
         validate: (data) => (Number.isInteger(data) && data >= 0),
         hint: "Number of minutes to cache the query last noter data (greater than 0; setting to zero disables caching)."
+    },
+    filter_last_noter_enabled: {
+        reset: true,
+        validate: JSPLib.validate.isBoolean,
+        hint: "Filter out self edits when checking for the last noter."
     },
     new_noter_check_enabled: {
         reset: true,
@@ -233,9 +239,9 @@ const PROGRAM_CSS = `
 /** Side menu **/
 #ta-side-menu {
     position: fixed;
-    top: clamp(1rem, 100vh - 52.5rem, 8rem);
+    top: clamp(1rem, 100vh - 54.5rem, 8rem);
     left: 1em;
-    width: 20em;
+    width: 20.5em;
     height: auto;
     z-index: 100;
     background: var(--body-background-color);
@@ -250,6 +256,9 @@ const PROGRAM_CSS = `
     font-weight: bold;
     text-decoration: underline;
     margin-bottom: 0.75em;
+    letter-spacing: -1px;
+    transform: scaleX(0.95);
+    margin-left: -0.4em;
 }
 #ta-side-menu #ta-side-menu-text {
     font-size: 0.85em;
@@ -262,12 +271,18 @@ const PROGRAM_CSS = `
     font-weight: bold;
     font-variant: small-caps;
 }
-#ta-side-menu #ta-side-menu-close {
+#ta-side-menu .ta-control-button {
     position: absolute;
     top: 0.25em;
-    right: 0.25em;
     padding: 0.25em;
     font-weight: bold;
+    font-size: 1em;
+}
+#ta-side-menu #ta-side-menu-close {
+    right: 0.25em;
+}
+#ta-side-menu #ta-side-menu-reset {
+    right: 4em;
 }
 #ta-side-menu #ta-side-menu-tabs {
     letter-spacing: -1px;
@@ -340,6 +355,14 @@ button.ta-html-style-tag:hover {
     position: absolute;
     width: 2em;
     height: 2em;
+}
+#ta-constructs-text-shadow-subsection #ta-text-shadow-options {
+    margin-top: 1em;
+}
+#ta-constructs-text-shadow-subsection #ta-text-shadow-options label {
+    font-size: 1.35em;
+    font-weight: bold;
+    padding-right: 1em;
 }
 /****** Ruby subsection ******/
 #ta-constructs-ruby-subsection ruby {
@@ -570,6 +593,14 @@ const EXPAND_LR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height
 const EXPAND_TB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15" viewBox="0 0 22 16" transform="rotate(90)"><path d="M17 0v3h-5v4h5v3l5-5-5-5zM5 10V7h5V3H5V0L0 5l5 5z"></path></svg>';
 const CONTRACT_LR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15" viewBox="0 0 22 16"><path d="M22 3h-5V0l-5 5 5 5V7h5V3zM0 7h5v3l5-5-5-5v3H0v4z"/></svg>';
 const CONTRACT_TB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15" viewBox="0 0 22 16" transform="rotate(90)"><path d="M22 3h-5V0l-5 5 5 5V7h5V3zM0 7h5v3l5-5-5-5v3H0v4z"/></svg>';
+const PLUS_SIGN = `
+<svg xmlns="http://www.w3.org/2000/svg"  width="25" height="25" viewBox="-20 -40 240 240">
+    <path d="M75,0 V75 H0 V125 H75 V200 H125 V125 H200 V75 H125 V0 H75 z" fill="#080" />
+</svg>`;
+const MINUS_SIGN = `
+<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="-20 -40 240 240">
+    <path d="M 0,75 L 0,125 L 200,125 L 200,75 L 0,75 z" fill="#F00" />
+</svg>`;
 
 const SIDE_MENU = `
 <div id="ta-side-menu" style="display: none;">
@@ -615,7 +646,12 @@ const SIDE_MENU = `
             <button id="ta-side-menu-copy" title="Copy styles from HTML tag to inputs">Copy</button>
             <button id="ta-side-menu-apply" title="Apply styles from inputs to HTML tag">Apply</button>
         </div>
-        <button id="ta-side-menu-close" title="Close the side menu (Hotkey: alt+t)">Close</button>
+        <div style="position: absolute; top: 2.5em; right: 2.5em;">
+            <a><img style="width: 1.5em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(PLUS_SIGN)}"></a>&nbsp;&nbsp;
+            <a><img style="width: 1.5em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(MINUS_SIGN)}"></a>
+        </div>
+        <button id="ta-side-menu-reset" class="ta-control-button" title="Reset the side menu size/position (Hotkey: alt+r)">Reset</button>
+        <button id="ta-side-menu-close" class="ta-control-button" title="Close the side menu (Hotkey: alt+t)">Close</button>
     </div>
 </div>`;
 
@@ -632,6 +668,7 @@ const TEXT_SHADOW_SUBSECTION = `
         </div>
         <div id="ta-text-shadow-grid">%SHADOWGRID%</div>
     </div>
+    <div id="ta-text-shadow-options">%SHADOWOPTIONS%</div>
 </div>`;
 
 const RUBY_SUBSECTION = `
@@ -749,9 +786,8 @@ const CODES_SUBSECTION = `
 <div id="ta-codes-space-subsection" class="ta-subsection ta-cursor-initial">%SPACECHARS%</div>`;
 
 const NOTICE_INFO = `
-<b>Last noted:</b> %LASTUPDATED%<br>
-<b>Updated by:</b> %LASTUPDATER%<br>
-<b>Total notes:</b> %TOTALNOTES%&emsp;
+<b>Last noted:</b> %LASTUPDATED%<br>&emsp;by %LASTUPDATER%<br>
+<b>Total notes:</b> %TOTALNOTES%&nbsp;&nbsp;
 <b>Embedded:</b> <span id="ta-embedded-status-text" style="color: %EMBEDDEDCOLOR%;">%EMBEDDEDSTATUS%</span>`;
 
 const MENU_OPTION = `
@@ -1186,9 +1222,15 @@ const STYLE_CONFIG = {
         finalize: FinalizeColor,
         label: 'letter-spacing: -1px;',
     },
+    rotate: {
+        parse (_, value) {
+            return ['transform', `rotate(${value})`];
+        },
+        use_parse: true,
+    }
 };
 
-STYLE_CONFIG['letter-height'] = STYLE_CONFIG['letter-spacing'] = STYLE_CONFIG['font-size'];
+STYLE_CONFIG['line-height'] = STYLE_CONFIG['letter-spacing'] = STYLE_CONFIG['font-size'];
 
 STYLE_CONFIG['border-radius'] = JSPLib.utility.dataCopy(STYLE_CONFIG.direction_styles);
 
@@ -1225,6 +1267,7 @@ const INPUT_SECTIONS = {
     'embedded': '#ta-embedded-style-subsection input',
     'constructs': '#ta-text-shadow-attribs input',
     'text-shadow-grid': '#ta-text-shadow-grid input',
+    'text-shadow-options': '#ta-text-shadow-options input',
     'css-options': '#ta-menu-options input',
     'ruby-overall-style': '#ta-ruby-dialog-styles-overall input',
     'ruby-top-style': '#ta-ruby-dialog-styles-top input',
@@ -1267,6 +1310,7 @@ function RenderSideMenu() {
         JSPLib.utility.regexReplace(TEXT_SHADOW_SUBSECTION, {
             SHADOWCSS: RenderSectionTextInputs('text-shadow', TEXT_SHADOW_ATTRIBS, {}),
             SHADOWGRID: RenderTextShadowGrid(),
+            SHADOWOPTIONS: RenderSectionCheckboxes('text-shadow', ['append'], {})
         }) : "");
     let ruby_section = (TA.user_settings.ruby_enabled ? RUBY_SUBSECTION : "");
     let constructs_section = (TA.user_settings.text_shadow_enabled || TA.user_settings.ruby_enabled ? shadow_section + ruby_section + '<hr>' : "");
@@ -1359,7 +1403,7 @@ function RenderSectionCheckboxes(section_class, section_names, config) {
     section_names.forEach((name) => {
         let display_name = JSPLib.utility.displayCase(name);
         let input_name = section_class + '-' + JSPLib.utility.kebabCase(name);
-        let title = (config[name].title ? `title="${config[name].title}"` : "");
+        let title = (config[name]?.title ? `title="${config[name].title}"` : "");
         let checked = (TA.save_data[input_name] !== true ? "" : 'checked');
         html += `<div class="ta-${section_class} ta-checkbox" ${title}><label>${display_name}:</label><input type="checkbox" ${checked} name="${input_name}" id="ta-${input_name}"></div>`;
     });
@@ -1438,17 +1482,31 @@ function RenderCSSError(iteration, error) {
 </li>`;
 }
 
+function RenderUserLink(user) {
+    let user_name = JSPLib.utility.maxLengthString(user.name);
+    return `
+<a  class="user user-${user.level_string.toLowerCase()} ta-cursor-pointer"
+    data-user-id="${user.id}"
+    data-user-name="${user_name}"
+    data-user-level="${user.level}"
+    href="/users/${user.id}"
+    aria-expanded="false"
+    >
+        ${user_name}
+</a>`;
+}
+
 //Network functions
 
 function QueryNoteVersions(search_options, query_options) {
-    let send_options = {search: {post_id: TA.post_id, updater_id_not_eq: TA.user_id}, limit: 1};
+    let send_options = {search: {post_id: TA.post_id}, limit: 1};
     Object.assign(send_options.search, search_options);
     Object.assign(send_options, query_options);
     return JSPLib.danbooru.submitRequest('note_versions', send_options);
 }
 
 function QueryNewNotations() {
-    QueryNoteVersions({id_gt: TA.last_id}, {only: 'id,updated_at'}).then((data) => {
+    QueryNoteVersions({id_gt: TA.last_id, updater_id_not_eq: TA.user_id}, {only: 'id,updated_at'}).then((data) => {
         if (data.length > 0) {
             JSPLib.debug.debuglog("New note record:", data);
             alert("New noter detected: " + JSPLib.utility.timeAgo(data[0].updated_at));
@@ -1460,20 +1518,21 @@ function QueryNewNotations() {
 }
 
 function QueryLastNotation() {
-    let query_options = {only: 'id,updated_at,updater[name]'};
+    let query_options = {only: 'id,updated_at,updater[id,name,level,level_string]'};
     if (TA.user_settings.last_noter_cache_time > 0) {
         query_options.expires_in = TA.user_settings.last_noter_cache_time + 'min';
     }
-    QueryNoteVersions({}, query_options).then((data) => {
+    let search_options = (TA.user_settings.filter_last_noter_enabled ? {updater_id_not_eq: TA.user_id} : {});
+    QueryNoteVersions(search_options, query_options).then((data) => {
         JSPLib.debug.debuglog("Last note record:", data);
         TA.last_noter_queried = true;
         let timeago_timestamp = (data.length ? JSPLib.utility.timeAgo(data[0].updated_at) : 'N/A');
-        let updater_name = data[0]?.updater?.name || 'N/A';
+        let last_updater = (data.length ? RenderUserLink(data[0].updater) : 'N/A');
         let total_notes = $('#notes > article').length;
         let [embedded_status, embedded_color] = (TA.has_embedded ? ['Enabled', 'green'] : ['Disabled', 'red']);
         let html = JSPLib.utility.regexReplace(NOTICE_INFO, {
             LASTUPDATED: timeago_timestamp,
-            LASTUPDATER: JSPLib.utility.maxLengthString(updater_name),
+            LASTUPDATER: last_updater,
             TOTALNOTES: total_notes,
             EMBEDDEDSTATUS: embedded_status,
             EMBEDDEDCOLOR: embedded_color,
@@ -1846,9 +1905,12 @@ function GetInputs(key) {
 }
 
 function SetInputs(key, load_data) {
+    console.log('SetInputs-0', key);
     let selector = INPUT_SECTIONS[key];
     $(selector).each((_i, input) => {
+        console.log('SetInputs-1', selector, input.name);
         if (!(input.name in load_data)) return;
+        console.log('SetInputs-2', input.tagName, input.type);
         if (input.tagName === 'INPUT' && input.type === 'checkbox') {
             input.checked = load_data[input.name];
         } else {
@@ -1857,11 +1919,14 @@ function SetInputs(key, load_data) {
     });
 }
 
-function SaveInputs() {
+function SaveMenuState() {
     for (let key in INPUT_SECTIONS) {
         TA.save_data = Object.assign(TA.save_data, GetInputs(key));
     }
     JSPLib.storage.setStorageData('ta-saved-inputs', TA.save_data, localStorage);
+    JSPLib.storage.setStorageData('ta-mode', TA.mode, localStorage);
+    let {left, top} = $('#ta-side-menu').get(0).style;
+    JSPLib.storage.setStorageData('ta-position', {left, top}, localStorage);
 }
 
 function ClearInputs(selector) {
@@ -1954,8 +2019,9 @@ function GetCSSStyles(overwrite, selector) {
         let style_name = input.dataset.name;
         let [parse_style_name, parse_value] = STYLE_CONFIG[style_name]?.parse?.(style_name, value) || [style_name, value];
         let normalized_value = STYLE_CONFIG[style_name]?.normalize?.(parse_value) || parse_value;
-        test_div.style.setProperty(style_name, normalized_value);
-        if (test_div.style.getPropertyValue(style_name) === normalized_value) {
+        let use_style_name = (STYLE_CONFIG[style_name]?.use_parse ? parse_style_name : style_name);
+        test_div.style.setProperty(use_style_name, normalized_value);
+        if (test_div.style.getPropertyValue(use_style_name) === normalized_value) {
             let final_value = STYLE_CONFIG[style_name]?.finalize?.(parse_value) || parse_value;
             add_styles[parse_style_name] = final_value;
         } else {
@@ -2066,11 +2132,13 @@ function ParseDirectionStyles(style_dict) {
 
 //// CSS text shadow
 
-function BuildTextShadowStyle() {
+function BuildTextShadowStyle(append, style_dict) {
+    console.log(append, style_dict);
     let errors = [];
     let attribs = Object.assign(...$('#ta-text-shadow-attribs input').map((i, entry) => ({[entry.dataset.name.trim()]: entry.value})));
+    let initial_shadow = (append && style_dict['text-shadow']) || ""
     if (attribs.size === "") {
-        return "";
+        return initial_shadow;
     }
     if (!ValidateSize(attribs.size)) errors.push("Invalid size specified.");
     if ((attribs.color !== "") && !ValidateColor(attribs.color)) errors.push("Invalid color specified.");
@@ -2089,7 +2157,7 @@ function BuildTextShadowStyle() {
         text_shadow += (attribs.color !== "" ? ' ' + attribs.color : "");
         return text_shadow;
     });
-    return text_shadows.join(', ');
+    return (initial_shadow ? initial_shadow + ', ' : "") + text_shadows.join(', ');
 }
 
 function TokenizeTextShadow(shadow) {
@@ -2282,7 +2350,8 @@ function ApplyTagStyles() {
     var add_styles = {};
     var invalid_styles = {};
     if (TA.mode === 'constructs') {
-        let text_shadow_style = BuildTextShadowStyle();
+        let append = $('#ta-text-shadow-append').get(0)?.checked;
+        let text_shadow_style = BuildTextShadowStyle(append, html_tag.style_dict);
         if (text_shadow_style === false) return;
         add_styles['text-shadow'] = text_shadow_style;
     } else {
@@ -2607,10 +2676,11 @@ function SaveNote() {
         y: note.y,
         width: note.w,
         height: note.h,
-        body: note.original_body,
     };
     var note_promise;
     if (note.is_new()) {
+        // The body is only saveable this way for new notes; otherwise use the edit dialog.
+        params.body = note.original_body;
         params.post_id = note.post_id;
         note_promise = JSPLib.network.post(`/notes.json`, {data: {note: params }});
     } else {
@@ -2714,16 +2784,15 @@ function UnselectNote() {
 function CopyNote() {
     let note = GetMovableNote();
     let copy_note = new Danbooru.Note({
-        id: $article.data("id"),
         // Randomly place note within random width/height distance
-        x: $article.data(JSPLib.utility.clamp(2 * note.w * (Math.random() - 0.5) + note.x, 0, note.post_width - note.w)),
-        y: $article.data(JSPLib.utility.clamp(2 * note.h * (Math.random() - 0.5) + note.y, 0, note.post_height - note.h)),
-        w: $article.data(note.w),
-        h: $article.data(note.h),
+        x: JSPLib.utility.clamp(2 * note.w * (Math.random() - 0.5) + note.x, 0, note.post_width - note.w),
+        y: JSPLib.utility.clamp(2 * note.h * (Math.random() - 0.5) + note.y, 0, note.post_height - note.h),
+        w: note.w,
+        h: note.h,
         original_body: note.original_body,
-        sanitized_body: (TA.has_embedded ? n.box.$inner_border.html() : note.body.$note_body.html()),
-    }
-    select_note.select();
+        sanitized_body: (TA.has_embedded ? note.box.$inner_border.html() : note.body.$note_body.html()),
+    });
+    copy_note.select();
 }
 
 //// Codes section handlers
@@ -2968,6 +3037,21 @@ function PollForNewNotations() {
     }
 }
 
+// Other functions
+
+function CheckEmbeddedFontSize() {
+    JSPLib.utility.recheckTimer({
+        check: () => JSPLib.utility.isNamespaceBound('#image', 'click', 'danbooru') && $('.image-container').is(':visible'),
+        exec: () => {
+            console.log('CheckEmbeddedFontSize');
+            let font_size = Number(($('.image-container').get(0)?.style?.fontSize || '').match(/\d+/)[0]);
+            if (font_size === 0) {
+                Danbooru.Note.Box.scale_all();
+            }
+        }
+    }, 500);
+}
+
 // Side menu functions
 
 function ToggleSideMenu(open_menu, toggle_link = true) {
@@ -2977,7 +3061,7 @@ function ToggleSideMenu(open_menu, toggle_link = true) {
         if (toggle_link) {
             TA.$post_option.hide();
         }
-        $(window).on('beforeunload.ta', SaveInputs);
+        $(window).on('beforeunload.ta', SaveMenuState);
     } else {
         TA.$side_menu.hide();
         TA.$side_menu.draggable('destroy');
@@ -2985,12 +3069,13 @@ function ToggleSideMenu(open_menu, toggle_link = true) {
             TA.$post_option.show();
         }
         $(window).off('beforeunload.ta');
-        SaveInputs();
+        SaveMenuState();
     }
     TA.side_menu_open = open_menu;
 }
 
 function InitializeSideMenu() {
+    console.log('InitializeSideMenu');
     TA.save_data = JSPLib.storage.getStorageData('ta-saved-inputs', localStorage, {});
     $('#page').append(RenderSideMenu());
     if (TA.user_settings.text_shadow_enabled || TA.user_settings.ruby_enabled) {
@@ -3073,6 +3158,7 @@ function RenderSettingsMenu() {
     $('#ta-last-noted-settings').append(JSPLib.menu.renderCheckbox('check_last_noted_enabled'));
     $('#ta-last-noted-settings').append(JSPLib.menu.renderTextinput('last_noted_cutoff', 10));
     $('#ta-last-noted-settings').append(JSPLib.menu.renderCheckbox('query_last_noter_enabled'));
+    $('#ta-last-noted-settings').append(JSPLib.menu.renderCheckbox('filter_last_noter_enabled'));
     $('#ta-last-noted-settings').append(JSPLib.menu.renderTextinput('last_noter_cache_time', 10));
     $('#ta-last-noted-settings').append(JSPLib.menu.renderCheckbox('new_noter_check_enabled'));
     $('#ta-last-noted-settings').append(JSPLib.menu.renderTextinput('new_noter_check_interval', 10));
@@ -3104,6 +3190,9 @@ function Main() {
     $('#translate').on(PROGRAM_CLICK, ToggleSideNotice);
     if (TA.user_settings.check_last_noted_enabled) {
         CheckLastNoted();
+    }
+    if (TA.has_embedded) {
+        CheckEmbeddedFontSize();
     }
 }
 
