@@ -59,7 +59,6 @@ const DEFAULT_VALUES = {
     noter_detected: false,
     missed_poll: false,
     last_id: 0,
-    mode: 'main',
     save_data: null,
     shadow_grid: {},
     $load_dialog: {},
@@ -283,6 +282,16 @@ const PROGRAM_CSS = `
 }
 #ta-side-menu #ta-side-menu-reset {
     right: 4em;
+}
+#ta-side-menu #ta-size-controls {
+    position: absolute;
+    top: 2.75em;
+    right: 0.5em;
+    padding: 0.25em 0.75em;
+    background: #f0f0f0;
+}
+#ta-size-menu #ta-size-controls a {
+    width: 1.5em;
 }
 #ta-side-menu #ta-side-menu-tabs {
     letter-spacing: -1px;
@@ -646,9 +655,9 @@ const SIDE_MENU = `
             <button id="ta-side-menu-copy" title="Copy styles from HTML tag to inputs">Copy</button>
             <button id="ta-side-menu-apply" title="Apply styles from inputs to HTML tag">Apply</button>
         </div>
-        <div style="position: absolute; top: 2.5em; right: 2.5em;">
-            <a><img style="width: 1.5em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(PLUS_SIGN)}"></a>&nbsp;&nbsp;
-            <a><img style="width: 1.5em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(MINUS_SIGN)}"></a>
+        <div id="ta-size-controls" class="ta-cursor-pointer">
+            <a data-add="1"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(PLUS_SIGN)}"></a>&nbsp;&nbsp;
+            <a data-add="-1"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(MINUS_SIGN)}"></a>
         </div>
         <button id="ta-side-menu-reset" class="ta-control-button" title="Reset the side menu size/position (Hotkey: alt+r)">Reset</button>
         <button id="ta-side-menu-close" class="ta-control-button" title="Close the side menu (Hotkey: alt+t)">Close</button>
@@ -1925,8 +1934,8 @@ function SaveMenuState() {
     }
     JSPLib.storage.setStorageData('ta-saved-inputs', TA.save_data, localStorage);
     JSPLib.storage.setStorageData('ta-mode', TA.mode, localStorage);
-    let {left, top} = $('#ta-side-menu').get(0).style;
-    JSPLib.storage.setStorageData('ta-position', {left, top}, localStorage);
+    let {left, top, fontSize} = $('#ta-side-menu').get(0).style;
+    JSPLib.storage.setStorageData('ta-position', {left, top, fontSize}, localStorage);
 }
 
 function ClearInputs(selector) {
@@ -2258,6 +2267,17 @@ function CloseSideMenu() {
     } else {
         TA.$close_notice_link.click();
     }
+}
+
+function ResetSideMenu() {
+    TA.$side_menu.css({top: '', left: '', fontSize: ''});
+}
+
+function ResizeSideMenu(event) {
+    let additive = $(event.currentTarget).data('add');
+    let font_size_str = window.getComputedStyle(TA.$side_menu[0]).fontSize;
+    let font_size = Number(font_size_str.match(/^\d+/)[0]);
+    TA.$side_menu[0].style.fontSize = JSPLib.utility.clamp(font_size + additive, 10, 16) + 'px';
 }
 
 function KeyboardMenuToggle() {
@@ -3124,15 +3144,26 @@ function InitializeSideMenu() {
     $('#ta-side-menu-copy').on(PROGRAM_CLICK, CopyTagStyles);
     $('#ta-side-menu-clear').on(PROGRAM_CLICK, ClearTagStyles);
     $('#ta-side-menu-apply').on(PROGRAM_CLICK, ApplyTagStyles);
+    $('#ta-size-controls > a').on(PROGRAM_CLICK , ResizeSideMenu);
+    $('#ta-side-menu-reset').on(PROGRAM_CLICK, ResetSideMenu);
     $('#ta-side-menu-close').on(PROGRAM_CLICK, CloseSideMenu);
     $('#ta-side-menu-load').on(PROGRAM_CLICK, LoadTagStyles);
     $('#ta-side-menu-open').on(PROGRAM_CLICK, OpenSideMenu);
     $(document).on(PROGRAM_KEYDOWN, null, 'alt+t', KeyboardMenuToggle);
     $(document).on('visibilitychange.ta', CheckMissedLastNoterPolls);
+    let positions = JSPLib.storage.getStorageData('ta-position', localStorage, {});
     TA.$side_menu = $('#ta-side-menu');
+    for (let key in positions) {
+        if (positions[key]) {
+            TA.$side_menu.css(key, positions[key]);
+        }
+    }
     TA.$text_box = $('#ta-side-menu-text');
     TA.$post_option = $('#post-option-translator-assist');
     TA.$close_notice_link = $('#close-notice-link');
+    if (TA.mode !== 'main') {
+        $(`.ta-menu-tab[data-value="${TA.mode}"]`).click();
+    }
     TA.starting_notes = JSPLib.utility.getObjectAttributes(Danbooru.Note.notes, 'id');
     TA.initialized = true;
     JSPLib.utility.setCSSStyle(PROGRAM_CSS, 'program');
@@ -3147,6 +3178,7 @@ function InitializeProgramValues() {
         user_id: Danbooru.CurrentUser.data('id'),
         has_embedded: JSPLib.utility.getMeta('post-has-embedded-notes') === 'true',
         last_noted: JSPLib.utility.toTimeStamp(document.body.dataset.postLastNotedAt),
+        mode: JSPLib.storage.getStorageData('ta-mode', localStorage, 'main'),
     });
     return true;
 }
