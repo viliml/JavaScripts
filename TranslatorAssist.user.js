@@ -201,7 +201,6 @@ const PROGRAM_CSS = `
     font-size: 1.4em;
     font-weight: bold;
     margin-bottom: 0.5em;
-    display: inline-block;
 }
 .ta-subheader {
     font-size: 1.2em;
@@ -239,8 +238,8 @@ const PROGRAM_CSS = `
 #ta-side-menu {
     position: fixed;
     top: clamp(1rem, 100vh - 54.5rem, 8rem);
-    left: 1em;
-    width: 20.5em;
+    left: 0.7em;
+    width: 20.6em;
     height: auto;
     z-index: 100;
     background: var(--body-background-color);
@@ -258,13 +257,17 @@ const PROGRAM_CSS = `
     letter-spacing: -1px;
     transform: scaleX(0.95);
     margin-left: -0.4em;
+    margin-bottom: 4.5em;
 }
 #ta-side-menu #ta-side-menu-text {
+    position: absolute;
+    top: 3.3em;
     font-size: 0.85em;
-    margin-bottom: 1em;
     border: 1px dashed #DDD;
     padding: 0.35em;
     min-height: 5em;
+    line-height: 1.4em;
+    width: 23em;
 }
 #ta-side-menu #ta-embedded-status-text {
     font-weight: bold;
@@ -290,7 +293,7 @@ const PROGRAM_CSS = `
     padding: 0.25em 0.75em;
     background: #f0f0f0;
 }
-#ta-size-menu #ta-size-controls a {
+#ta-side-menu #ta-size-controls img {
     width: 1.5em;
 }
 #ta-side-menu #ta-side-menu-tabs {
@@ -603,11 +606,11 @@ const EXPAND_TB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height
 const CONTRACT_LR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15" viewBox="0 0 22 16"><path d="M22 3h-5V0l-5 5 5 5V7h5V3zM0 7h5v3l5-5-5-5v3H0v4z"/></svg>';
 const CONTRACT_TB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15" viewBox="0 0 22 16" transform="rotate(90)"><path d="M22 3h-5V0l-5 5 5 5V7h5V3zM0 7h5v3l5-5-5-5v3H0v4z"/></svg>';
 const PLUS_SIGN = `
-<svg xmlns="http://www.w3.org/2000/svg"  width="25" height="25" viewBox="-20 -40 240 240">
+<svg xmlns="http://www.w3.org/2000/svg"  width="15" height="15" viewBox="-20 -40 240 240">
     <path d="M75,0 V75 H0 V125 H75 V200 H125 V125 H200 V75 H125 V0 H75 z" fill="#080" />
 </svg>`;
 const MINUS_SIGN = `
-<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="-20 -40 240 240">
+<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="-20 -40 240 240">
     <path d="M 0,75 L 0,125 L 200,125 L 200,75 L 0,75 z" fill="#F00" />
 </svg>`;
 
@@ -656,8 +659,8 @@ const SIDE_MENU = `
             <button id="ta-side-menu-apply" title="Apply styles from inputs to HTML tag">Apply</button>
         </div>
         <div id="ta-size-controls" class="ta-cursor-pointer">
-            <a data-add="1"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(PLUS_SIGN)}"></a>&nbsp;&nbsp;
-            <a data-add="-1"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(MINUS_SIGN)}"></a>
+            <a data-add="1" title="Increase the size of the menu"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(PLUS_SIGN)}"></a>&nbsp;&nbsp;
+            <a data-add="-1" title="Decrease the size of the menu"><img src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(MINUS_SIGN)}"></a>
         </div>
         <button id="ta-side-menu-reset" class="ta-control-button" title="Reset the side menu size/position (Hotkey: alt+r)">Reset</button>
         <button id="ta-side-menu-close" class="ta-control-button" title="Close the side menu (Hotkey: alt+t)">Close</button>
@@ -723,31 +726,31 @@ const CONTROLS_SECTION = `
 <div class="ta-header ta-cursor-text">Placement:</div>
 <div id="ta-controls-placement-subsection" style="display: flex;" class="ta-subsection ta-cursor-initial">
     <div id="ta-placement-controls">
-        <button class="ta-button-placement ta-button-svg" data-action="expand-width" title="Expand width">
+        <button class="ta-button-placement ta-button-svg" data-action="expand-width" title="Expand width (Hotkey: shift + right arrow)">
             <img style="top: 0.75em; left: 1em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(EXPAND_LR_SVG)}">
         </button>
-        <button class="ta-button-placement" data-action="move-up" title="Move up">
+        <button class="ta-button-placement" data-action="move-up" title="Move up (Hotkey: up arrow)">
             <div style="transform: rotate(270deg);">➜</div>
         </button>
-        <button class="ta-button-placement ta-button-svg" data-action="expand-height" title="Expand height">
+        <button class="ta-button-placement ta-button-svg" data-action="expand-height" title="Expand height (Hotkey: shift + down arrow)">
             <img style="top: 0.5em; left: 0.75em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(EXPAND_TB_SVG)}">
         </button>
-        <button class="ta-button-placement move-left" data-action="move-left" title="Move left">
+        <button class="ta-button-placement move-left" data-action="move-left" title="Move left (Hotkey: left arrow)">
             <div style="transform: rotate(180deg);">➜</div>
         </button>
         <button id="ta-get-placement" title="Get coordinate and size info">
             <div style="font-size: 1.5em;font-weight: bold; margin-left: -0.2em;">Get</div>
         </button>
-        <button class="ta-button-placement" data-action="move-right" title="Move right">
+        <button class="ta-button-placement" data-action="move-right" title="Move right (Hotkey: right arrow)">
             <div>➜</div>
         </button>
-        <button class="ta-button-placement ta-button-svg" data-action="contract-width" title="Contract width">
+        <button class="ta-button-placement ta-button-svg" data-action="contract-width" title="Contract width (Hotkey: shift + left arrow)">
             <img style="top: 0.75em; left: 1em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(CONTRACT_LR_SVG)}">
         </button>
-        <button class="ta-button-placement" data-action="move-down" title="Move down">
+        <button class="ta-button-placement" data-action="move-down" title="Move down (Hotkey: down arrow)">
             <div style="transform: rotate(90deg);">➜</div>
         </button>
-        <button class="ta-button-placement ta-button-svg" data-action="contract-height" title="Contract height">
+        <button class="ta-button-placement ta-button-svg" data-action="contract-height" title="Contract height (Hotkey: shift + up arrow)">
             <img style="top: 0.5em; left: 0.75em;" src="data:image/svg+xml,${JSPLib.utility.fullEncodeURIComponent(CONTRACT_TB_SVG)}">
         </button>
     </div>
@@ -1148,8 +1151,8 @@ const LOAD_DIALOG_SETTINGS = {
     title: "Load Sessions",
     width: 500,
     height: 600,
-    modal: true,
-    draggable: false,
+    modal: false,
+    draggable: true,
     resizable: false,
     autoOpen: false,
     position: {my: 'center', at: 'center'},
@@ -1160,7 +1163,10 @@ const LOAD_DIALOG_SETTINGS = {
     buttons: [
         {
             'text': 'Save',
-            'click': SaveSessionInputs,
+            'click': SaveSession,
+        }, {
+            'text': 'Rename',
+            'click': RenameSession,
         }, {
             'text': 'Delete',
             'click': DeleteSessions,
@@ -1233,7 +1239,7 @@ const STYLE_CONFIG = {
     },
     rotate: {
         parse (_, value) {
-            return ['transform', `rotate(${value})`];
+            return (value !== "" ? ['transform', `rotate(${value})`] : ['transform', ""]);
         },
         use_parse: true,
     }
@@ -1382,7 +1388,8 @@ function RenderLoadSessions(panel, sessions) {
 
 function RenderLoadItem(item) {
     let checkbox_key = 'ta-delete-' + item.key;
-    return `<li><label for="${checkbox_key}"><input id="${checkbox_key}" type="checkbox"></label><a href="javascript:void(0)" class="ta-load-session-item" data-name="${item.name}" data-key="${item.key}">${item.name}</a></li>`;
+    let escaped_name = JSPLib.utility.HTMLEscape(item.name);
+    return `<li><label for="${checkbox_key}"><input id="${checkbox_key}" type="checkbox"></label><a href="javascript:void(0)" class="ta-load-session-item" data-name="${escaped_name}" data-key="${item.key}">${escaped_name}</a></li>`;
 }
 
 function RenderHTMLBlockButtons() {
@@ -2277,7 +2284,7 @@ function ResizeSideMenu(event) {
     let additive = $(event.currentTarget).data('add');
     let font_size_str = window.getComputedStyle(TA.$side_menu[0]).fontSize;
     let font_size = Number(font_size_str.match(/^\d+/)[0]);
-    TA.$side_menu[0].style.fontSize = JSPLib.utility.clamp(font_size + additive, 10, 16) + 'px';
+    TA.$side_menu[0].style.fontSize = JSPLib.utility.clamp(font_size + additive, 9, 18) + 'px';
 }
 
 function KeyboardMenuToggle() {
@@ -2935,29 +2942,70 @@ function LoadRubyStyles() {
 
 //// Load dialog handlers
 
-function SaveSessionInputs() {
-    let name = prompt("Enter a name for this session:");
-    if (!name) return;
+function SaveSession() {
+    var name, key, isnew;
     let panel = TA.active_panel;
+    let $dialog = TA.$load_dialog[panel];
+    let checked_sessions = $dialog.find('li').filter((i, entry) => $(entry).find('input').prop('checked'));
+    if (checked_sessions.length > 1) {
+        JSPLib.notice.error("Multiple sessions selected... select only 1 to edit, or none to create a new.");
+        return;
+    }
+    if (checked_sessions.length === 0) {
+        name = prompt("Enter a name for this session:");
+        if (!name) return;
+        name = JSPLib.utility.maxLengthString(name, 50);
+        key = JSPLib.utility.getUniqueID();
+        let session_list = JSPLib.storage.getStorageData('ta-load-session-' + panel, localStorage, []);
+        session_list.push({key, name});
+        JSPLib.storage.setStorageData('ta-load-session-' + panel, session_list, localStorage);
+        isnew = true;
+    } else {
+        ({key, name} = checked_sessions.find('a')[0].dataset);
+        isnew = false;
+    }
     let section_keys = LOAD_PANEL_KEYS[panel];
     let save_inputs = {};
     section_keys.forEach((key) => {
         save_inputs = Object.assign(save_inputs, GetInputs(key));
     });
-    let key = JSPLib.utility.getUniqueID();
-    let session_list = JSPLib.storage.getStorageData('ta-load-session-' + panel, localStorage, []);
-    let item = {key, name: JSPLib.utility.maxLengthString(name, 50)};
-    session_list.push(item);
-    JSPLib.storage.setStorageData('ta-load-session-' + panel, session_list, localStorage);
     JSPLib.storage.setStorageData('ta-session-' + key, save_inputs, localStorage);
-    let $load_item = $(RenderLoadItem(item));
-    $load_item.find('a').on(PROGRAM_CLICK, LoadSessionInput);
-    let $list = TA.$load_dialog[panel].find('.ta-load-sessions ul');
-    if ($list.length === 0) {
-        $list = $('<ul></ul>');
-        TA.$load_dialog[panel].find('.ta-load-sessions').html("").append($list);
+    if (isnew) {
+        let $load_item = $(RenderLoadItem({key, name}));
+        $load_item.find('a').on(PROGRAM_CLICK, LoadSessionInput);
+        let $list = TA.$load_dialog[panel].find('.ta-load-sessions ul');
+        if ($list.length === 0) {
+            $list = $('<ul></ul>');
+            TA.$load_dialog[panel].find('.ta-load-sessions').html("").append($list);
+        }
+        $list.append($load_item);
     }
-    $list.append($load_item);
+    JSPLib.notice.notice('Session saved.');
+}
+
+function RenameSession() {
+    let panel = TA.active_panel;
+    let $dialog = TA.$load_dialog[panel];
+    let checked_sessions = $dialog.find('li').filter((i, entry) => $(entry).find('input').prop('checked'));
+    if (checked_sessions.length === 0) {
+        JSPLib.notice.error("Must select at least 1 session to rename.");
+        return;
+    }
+    if (checked_sessions.length > 1) {
+        JSPLib.notice.error("Must select only 1 session to rename.");
+        return;
+    }
+    let $link = checked_sessions.find('a');
+    let key = Number($link[0].dataset.key);
+    let name = prompt("Enter a name for this session:");
+    if (!name) return;
+    let session_list = JSPLib.storage.getStorageData('ta-load-session-' + panel, localStorage, []);
+    let rename_item = session_list.find((item) => item.key === key);
+    rename_item.name = name;
+    JSPLib.storage.setStorageData('ta-load-session-' + panel, session_list, localStorage);
+    $link.attr('data-name', name);
+    $link.text(name);
+    JSPLib.notice.notice('Session renamed.');
 }
 
 function DeleteSessions() {
@@ -3140,6 +3188,7 @@ function InitializeSideMenu() {
     $('#ta-next-note').on(PROGRAM_CLICK, NextNote);
     $('#ta-previous-note').on(PROGRAM_CLICK, PreviousNote);
     $('#ta-unselect-note').on(PROGRAM_CLICK, UnselectNote);
+    $('#ta-copy-note').on(PROGRAM_CLICK, CopyNote);
     $('#ta-section-codes button').on(PROGRAM_CLICK, InsertCharacter);
     $('#ta-side-menu-copy').on(PROGRAM_CLICK, CopyTagStyles);
     $('#ta-side-menu-clear').on(PROGRAM_CLICK, ClearTagStyles);
@@ -3150,6 +3199,7 @@ function InitializeSideMenu() {
     $('#ta-side-menu-load').on(PROGRAM_CLICK, LoadTagStyles);
     $('#ta-side-menu-open').on(PROGRAM_CLICK, OpenSideMenu);
     $(document).on(PROGRAM_KEYDOWN, null, 'alt+t', KeyboardMenuToggle);
+    $(document).on(PROGRAM_KEYDOWN, null, 'alt+r', ResetSideMenu);
     $(document).on('visibilitychange.ta', CheckMissedLastNoterPolls);
     let positions = JSPLib.storage.getStorageData('ta-position', localStorage, {});
     TA.$side_menu = $('#ta-side-menu');
