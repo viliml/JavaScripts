@@ -2808,13 +2808,25 @@ function GetTweetQuartile(tweetid) {
 
 async function GetImageLinks(tweet) {
     if (!tweet.ntisasImageUrls) {
-        let $obj = $('[ntisas-media-type=image] [ntisas-image], [ntisas-media-type=video] [ntisas-image]', tweet).sort((entrya, entryb) => (Number($(entrya).attr('ntisas-image')) - Number($(entryb).attr('ntisas-image'))));
         tweet.ntisasImageUrls = [];
-        for (let i = 0; i < $obj.length; i++) {
-            let image_info = $($obj[i]).data();
-            let image_url = await GetNormalImageURL(image_info);
-            if (image_url) {
-                tweet.ntisasImageUrls.push(image_url);
+        if (NTISAS.page === 'photo' && $(tweet).attr('ntisas-tweet') == 'main') {
+            let $photo_container = $('.ntisas-photo-container');
+            let $photos = $('img', $photo_container[0]);
+            for (let i = 0; i < $photos.length; i++) {
+                let image_info = GetImageURLInfo($photos[i].src);
+                let image_url = await GetNormalImageURL(image_info);
+                if (image_url) {
+                    tweet.ntisasImageUrls.push(image_url);
+                }
+            }
+        } else {
+            let $obj = $('[ntisas-media-type=image] [ntisas-image], [ntisas-media-type=video] [ntisas-image]', tweet).sort((entrya, entryb) => (Number($(entrya).attr('ntisas-image')) - Number($(entryb).attr('ntisas-image'))));
+            for (let i = 0; i < $obj.length; i++) {
+                let image_info = $($obj[i]).data();
+                let image_url = await GetNormalImageURL(image_info);
+                if (image_url) {
+                    tweet.ntisasImageUrls.push(image_url);
+                }
             }
         }
     }
@@ -3219,7 +3231,7 @@ function IsPageType(types) {
 }
 
 function IsTweetPage() {
-    return IsPageType(['tweet', 'web_tweet']);
+    return IsPageType(['tweet', 'web_tweet', 'photo']);
 }
 
 function IsMediaTimeline() {
@@ -4015,7 +4027,7 @@ function InitializeImageTweets($image_tweets) {
         promise_array.push(p.promise);
         $('.ntisas-footer-section', tweet).append(NTISAS_TWEET_MENU);
         const $tweet = $(tweet);
-        const media_type = $('[ntisas-media-type]', tweet).attr('ntisas-media-type');
+        const media_type = NTISAS.page === 'photo' ? 'image' : $('[ntisas-media-type]', tweet).attr('ntisas-media-type');
         if (!['image', 'video', 'deferred'].includes(media_type)) return;
         JSPLib.utility.recheckTimer({
             check: () => ['image', 'video'].includes(media_type) ||
@@ -5623,7 +5635,7 @@ function MarkupMainTweet(tweet) {
         InitializeStatusBar(tweet_status, true);
         let profile_line = main_body.children[1];
         $(profile_line).addClass('ntisas-profile-line');
-        if (NTISAS.page === "tweet") {
+        if (NTISAS.page === "tweet" || NTISAS.page === "photo") {
             $(tweet).attr('data-screen-name', NTISAS.screen_name);
         } else if (NTISAS.page === "web_tweet") {
             let screen_name = ($('[role=link]', profile_line).attr('href') || "").slice(1);
@@ -5725,9 +5737,9 @@ function RegularCheck() {
     if (pagetype === 'photo') {
         NTISAS.photo_navigation = true;
         ProcessPhotoPopup();
-        return;
+    } else {
+        NTISAS.photo_navigation = false;
     }
-    NTISAS.photo_navigation = false;
 
     //Process events on a page change
     PageNavigation(pagetype);
@@ -5771,7 +5783,7 @@ function RegularCheck() {
     if (DisplayHighlights()) {
         HighlightTweets();
     }
-    if (!IsPageType(['tweet', 'web_tweet', 'other'])) {
+    if (!IsPageType(['tweet', 'web_tweet', 'other', 'photo'])) {
         CollectTweetStats();
     }
     if (NTISAS.user_settings.auto_unhide_tweets_enabled) {
@@ -5826,6 +5838,7 @@ function PageNavigation(pagetype) {
             break;
         case 'tweet':
         case 'web_tweet':
+        case 'photo':
             this.debug('log', "Tweet ID:", page_id);
             NTISAS.screen_name = account;
             NTISAS.tweet_id = page_id;
@@ -5990,7 +6003,7 @@ function ProcessTweetImages() {
 
 function ProcessNewTweets() {
     //Use the article HTML element as a landmark for locating tweets
-    let $tweet_articles = $('div[data-testid=primaryColumn] div:not([ntisas-tweet]) > div > article[data-testid=tweet]');
+    let $tweet_articles = $('div[data-testid=cellInnerDiv] > div:not([ntisas-tweet]) > div > article[data-testid=tweet]');
     //Get the highest delineation point between tweets that Twitter doesn't alter through events
     let $tweets = $tweet_articles.map((i, entry) => entry.parentElement.parentElement);
     if ($tweets.length === 0) {
@@ -6013,9 +6026,13 @@ function ProcessNewTweets() {
         }
     });
     if (IsTweetPage() && main_tweets.length > 0) {
-        MarkupMainTweet(main_tweets[0]);
+        main_tweets.forEach(MarkupMainTweet);
     }
+
     let $image_tweets = $tweets.filter((i, entry) => $('[ntisas-media-type=image], [ntisas-media-type=video], [ntisas-media-type=deferred]', entry).length);
+    if (NTISAS.page === 'photo') {
+        $image_tweets = $image_tweets.add($('.ntisas-photo-container + div [ntisas-tweet=main]'));
+    }
     this.debug('log', `[${NTISAS.uniqueid}]`, "New:", $tweets.length, "Image:", $image_tweets.length);
     //Initialize tweets with images
     if ($image_tweets.length) {
